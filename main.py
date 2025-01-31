@@ -1,4 +1,3 @@
-# Created by @JOHN_FR34K
 import os
 import re
 import sys
