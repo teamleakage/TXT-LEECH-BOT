@@ -16,7 +16,7 @@ A Telegram bot that can download videos from text files containing links, with s
 ## Deployment Methods
 
 ### Deploy to Heroku
-[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/JOHN_FR34K/txt-leech-bot)
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/20255-ee-085/TXT-LEECH-BOT)
 
 1. Create a Heroku account (skip if you already have one)
 2. Click the Deploy button above
@@ -28,7 +28,7 @@ A Telegram bot that can download videos from text files containing links, with s
 5. Once deployed, ensure the worker dyno is enabled
 
 ### Google Colab
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JOHN_FR34K/txt-leech-bot/blob/main/TXT_Leech_Bot.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/20255-ee-085/TXT-LEECH-BOT/blob/main/TXT_Leech_Bot.ipynb)
 
 1. Open the Colab notebook using the button above
 2. Fill in your credentials in the notebook
@@ -39,8 +39,8 @@ A Telegram bot that can download videos from text files containing links, with s
 
 1. Clone the repository
 ```bash
-git clone https://github.com/JOHN_FR34K/txt-leech-bot
-cd txt-leech-bot
+git clone https://github.com/20255-ee-085/TXT-LEECH-BOT
+cd TXT-LEECH-BOT
 ```
 
 2. Install dependencies
