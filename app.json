@@ -7,7 +7,7 @@
         "video",
         "downloader"
     ],
-    "repository": "https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME",
+    "repository": "https://github.com/JOHN_FR34K/txt-leech-bot",
     "env": {
         "BOT_TOKEN": {
             "description": "Your bot token from @BotFather",
