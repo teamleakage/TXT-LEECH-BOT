@@ -35,5 +35,6 @@
             "quantity": 1,
             "size": "basic"
         }
-    }
+    },
+    "stack": "heroku-22"
 }
