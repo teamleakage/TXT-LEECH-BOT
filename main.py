@@ -69,13 +69,33 @@ async def download_m3u8(url, output_file, key_url=None):
         print(f"M3U8 download error: {str(e)}")
         return False
 
+@bot.on_message(filters.command(["start"]))
+async def start_command(client, message):
+    await message.reply_text(
+        "Hello! I'm a video downloader bot. Send me a text file with links and use /upload to start downloading."
+    )
+
+@bot.on_message(filters.command(["help"]))
+async def help_command(client, message):
+    await message.reply_text(
+        "**How to use:**\n\n"
+        "1. Create a text file with video links (one per line)\n"
+        "2. Send the text file to me\n"
+        "3. Use /upload command\n"
+        "4. Follow the prompts to set quality and other options\n\n"
+        "**Commands:**\n"
+        "/start - Check if bot is alive\n"
+        "/upload - Start downloading videos\n"
+        "/stop - Stop ongoing downloads"
+    )
+
 @bot.on_message(filters.command(["upload"]))
 async def upload(bot: Client, m: Message):
     try:
         editable = await m.reply_text('𝕤ᴇɴᴅ ᴛxᴛ ғɪʟᴇ ⚡️')
-        input: Message = await bot.listen(editable.chat.id)
-        x = await input.download()
-        await input.delete(True)
+        input_message = await bot.listen(editable.chat.id)
+        x = await input_message.download()
+        await input_message.delete(True)
 
         path = f"./downloads/{m.chat.id}"
         
@@ -85,17 +105,27 @@ async def upload(bot: Client, m: Message):
             content = content.split("\n")
             links = []
             for i in content:
-                links.append(i.split("://", 1))
+                if i.strip():  # Skip empty lines
+                    links.append(i.split("://", 1))
             os.remove(x)
-        except:
-            await m.reply_text("**Invalid file input.**")
-            os.remove(x)
+            if not links:
+                raise Exception("No valid links found in file")
+        except Exception as e:
+            await m.reply_text(f"**Invalid file input: {str(e)}**")
+            if os.path.exists(x):
+                os.remove(x)
             return
 
         await editable.edit(f"**𝕋ᴏᴛᴀʟ ʟɪɴᴋ𝕤 ғᴏᴜɴᴅ ᴀʀᴇ🔗🔗** **{len(links)}**\n\n**𝕊ᴇɴᴅ 𝔽ʀᴏᴍ ᴡʜᴇʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ɪɴɪᴛɪᴀʟ ɪ𝕤** **1**")
-        input0: Message = await bot.listen(editable.chat.id)
-        raw_text = input0.text
-        await input0.delete(True)
+        try:
+            input0: Message = await bot.listen(editable.chat.id)
+            raw_text = input0.text
+            await input0.delete(True)
+            if not raw_text.isdigit():
+                raise Exception("Please send a valid number")
+        except Exception as e:
+            await editable.edit(f"Failed to get starting number: {str(e)}")
+            return
 
         await editable.edit("**Now Please Send Me Your Batch Name**")
         input1: Message = await bot.listen(editable.chat.id)
@@ -149,6 +179,10 @@ async def upload(bot: Client, m: Message):
 
         try:
             for i in range(count - 1, len(links)):
+                if is_shutting_down:
+                    await m.reply_text("Download process stopped due to bot shutdown")
+                    break
+                    
                 # Process URL
                 V = links[i][1].replace("file/d/","uc?export=download&id=").replace("www.youtube-nocookie.com/embed", "youtu.be").replace("?modestbranding=1", "").replace("/view?usp=sharing","")
                 url = "https://" + V
