@@ -255,7 +255,10 @@ async def upload(bot: Client, m: Message):
 
         except Exception as e:
             await m.reply_text(str(e))
+            return
         await m.reply_text("**𝔻ᴏɴᴇ 𝔹ᴏ𝕤𝕤😎**")
+    except Exception as e:
+        await m.reply_text(f"An error occurred: {str(e)}")
 
 @bot.on_message(filters.command("stop"))
 async def stop_process(client, message):
