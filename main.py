@@ -16,6 +16,7 @@ import m3u8
 from Cryptodome.Cipher import AES
 import base64
 from vars import API_ID, API_HASH, BOT_TOKEN
+from utils import progress_bar, humanbytes, TimeFormatter
 
 bot = Client(
     "bot",
@@ -24,25 +25,26 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-async def download_m3u8(url, name):
+async def download_file(url, name):
     try:
-        # Download m3u8 file
-        response = requests.get(url)
-        if response.status_code != 200:
-            return None
-            
-        # Parse m3u8
-        m3u8_obj = m3u8.loads(response.text)
-        
-        # Download using yt-dlp
-        cmd = f'yt-dlp -o "{name}.mp4" "{url}" --no-check-certificate'
-        os.system(cmd)
-        
-        if os.path.exists(f"{name}.mp4"):
-            return f"{name}.mp4"
+        if url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            # For image files, download directly using requests
+            response = requests.get(url)
+            if response.status_code == 200:
+                with open(f"{name}.jpg", "wb") as f:
+                    f.write(response.content)
+                return f"{name}.jpg"
+        else:
+            # For other files, use yt-dlp
+            cmd = f'yt-dlp -o "{name}.%(ext)s" "{url}" -R 25 --fragment-retries 25'
+            os.system(cmd)
+            # Find the downloaded file
+            for file in os.listdir():
+                if file.startswith(name):
+                    return file
         return None
     except Exception as e:
-        print(f"Error downloading m3u8: {str(e)}")
+        print(f"Error downloading file: {str(e)}")
         return None
 
 @bot.on_message(filters.command("start"))
@@ -67,209 +69,137 @@ async def help_message(client, message):
 async def upload_file(client, message):
     try:
         if not message.reply_to_message:
-            msg = await message.reply_text(
-                "**Send me a .txt file containing links**\n\n"
-                "ℹ️ I'll wait for the file..."
-            )
-            
-            # Wait for a file to be sent
-            file_message: Message = await bot.listen(message.chat.id, filters=filters.document)
-            
-            if not file_message.document:
-                await msg.edit("❌ **Please send a file!**")
-                return
-                
-            if not file_message.document.file_name.endswith('.txt'):
-                await msg.edit("❌ **Only .txt files are supported!**")
-                return
-                
-            message.reply_to_message = file_message
-            await msg.delete()
+            await message.reply_text("Please reply to a text file containing links!")
+            return
         
         if not message.reply_to_message.document:
-            await message.reply_text("❌ **Please send a .txt file!**")
+            await message.reply_text("Please reply to a text file!")
             return
             
-        file_name = message.reply_to_message.document.file_name
-        if not file_name.endswith('.txt'):
-            await message.reply_text("❌ **Only .txt files are supported!**")
+        if not message.reply_to_message.document.file_name.endswith('.txt'):
+            await message.reply_text("Please reply to a text file!")
             return
             
-        editable = await message.reply_text("📥 **Processing .txt file...**")
+        editable = await message.reply_text("Processing...")
         
-        file_path = await message.reply_to_message.download()
-        links = []
-        
-        # Parse links from file
-        with open(file_path, 'r') as f:
-            for line in f:
-                # Extract URL using regex
-                url_match = re.search(r'https?://[^\s<>"]+|www\.[^\s<>"]+', line)
-                if url_match:
-                    links.append(url_match.group())
-            
-        if not links:
-            await editable.edit("❌ **No valid links found in the file!**")
-            os.remove(file_path)
+        # Download and process the text file
+        file = await message.reply_to_message.download()
+        path = f"./downloads/{message.chat.id}"
+        os.makedirs(path, exist_ok=True)
+
+        try:
+            with open(file, "r") as f:
+                content = f.read()
+            content = content.split("\n")
+            links = []
+            for i in content:
+                if i.strip():  # Skip empty lines
+                    links.append(i.strip())
+            os.remove(file)
+        except:
+            await message.reply_text("**Invalid file input.**")
+            os.remove(file)
             return
-            
+
         await editable.edit(f"**𝕋ᴏᴛᴀʟ ʟɪɴᴋ𝕤 ғᴏᴜɴᴅ ᴀʀᴇ🔗🔗** **{len(links)}**\n\n**𝕊ᴇɴᴅ 𝔽ʀᴏᴍ ᴡʜᴇʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ɪɴɪᴛɪᴀʟ ɪ𝕤** **1**")
-        input0: Message = await bot.listen(editable.chat.id)
+        input0 = await bot.listen(editable.chat.id)
         raw_text = input0.text
         await input0.delete(True)
 
         await editable.edit("**Now Please Send Me Your Batch Name**")
-        input1: Message = await bot.listen(editable.chat.id)
+        input1 = await bot.listen(editable.chat.id)
         raw_text0 = input1.text
         await input1.delete(True)
 
         await editable.edit("**𝔼ɴᴛᴇʀ ʀᴇ𝕤ᴏʟᴜᴛɪᴏɴ📸**\n144,240,360,480,720,1080 please choose quality")
-        input2: Message = await bot.listen(editable.chat.id)
+        input2 = await bot.listen(editable.chat.id)
         raw_text2 = input2.text
         await input2.delete(True)
-        try:
-            if raw_text2 == "144":
-                res = "256x144"
-            elif raw_text2 == "240":
-                res = "426x240"
-            elif raw_text2 == "360":
-                res = "640x360"
-            elif raw_text2 == "480":
-                res = "854x480"
-            elif raw_text2 == "720":
-                res = "1280x720"
-            elif raw_text2 == "1080":
-                res = "1920x1080" 
-            else: 
-                res = "UN"
-        except Exception:
-                res = "UN"
 
-        await editable.edit("**Now Enter A Caption to add caption on your uploaded file**")
-        input3: Message = await bot.listen(editable.chat.id)
+        await editable.edit("Now Enter A Caption to add caption on your uploaded file")
+        input3 = await bot.listen(editable.chat.id)
         raw_text3 = input3.text
         await input3.delete(True)
+        
         highlighter = f"️ ⁪⁬⁮⁮⁮"
-        if raw_text3 == 'Robin':
-            MR = highlighter 
-        else:
-            MR = raw_text3
+        MR = highlighter if raw_text3 == 'Robin' else raw_text3
 
-        await editable.edit("**Now send the Thumb url**\nEg » https://graph.org/file/ce1723991756e48c35aa1.jpg \n Or if don't want thumbnail send = no")
-        input6 = message = await bot.listen(editable.chat.id)
+        await editable.edit("Now send the Thumb url\nEg » https://graph.org/file/ce1723991756e48c35aa1.jpg \nOr if don't want thumbnail send = no")
+        input6 = await bot.listen(editable.chat.id)
         raw_text6 = input6.text
         await input6.delete(True)
         await editable.delete()
 
-        thumb = input6.text
-        if thumb.startswith("http://") or thumb.startswith("https://"):
+        thumb = raw_text6
+        if thumb.startswith(("http://", "https://")):
             getstatusoutput(f"wget '{thumb}' -O 'thumb.jpg'")
             thumb = "thumb.jpg"
         else:
             thumb = "no"
 
-        if len(links) == 1:
-            count = 1
-        else:
-            count = int(raw_text)
+        count = 1 if len(links) == 1 else int(raw_text)
 
-        for url in links[count-1:]:
+        for i in range(count-1, len(links)):
             try:
-                name1 = f"{raw_text0} {str(count).zfill(3)}"
-                name = f'{str(count).zfill(3)}) {name1}'
-
-                cc = f'**[📽️] Vid_ID:** {str(count).zfill(3)}. **{name1}{MR}.mkv\n**𝔹ᴀᴛᴄʜ** » **{raw_text0}**'
-                cc1 = f'**[📁] Pdf_ID:** {str(count).zfill(3)}. {name1}{MR}.pdf \n**𝔹ᴀᴛᴄʜ** » **{raw_text0}**'
-
-                if "drive" in url:
-                    try:
-                        ka = await helper.download(url, name)
-                        copy = await bot.send_document(chat_id=message.chat.id, document=ka, caption=cc1)
-                        count += 1
-                        os.remove(ka)
-                        time.sleep(1)
-                    except FloodWait as e:
-                        await message.reply_text(str(e))
-                        time.sleep(e.x)
-                        continue
-
-                elif ".pdf" in url:
-                    try:
-                        cmd = f'yt-dlp -o "{name}.pdf" "{url}"'
-                        download_cmd = f"{cmd} -R 25 --fragment-retries 25"
-                        os.system(download_cmd)
-                        copy = await bot.send_document(chat_id=message.chat.id, document=f'{name}.pdf', caption=cc1)
-                        count += 1
-                        os.remove(f'{name}.pdf')
-                    except FloodWait as e:
-                        await message.reply_text(str(e))
-                        time.sleep(e.x)
-                        continue
-                elif ".m3u8" in url:
-                    Show = f"**⥥ 🄳🄾🅆🄽🄻🄾🄰🄳🄸🄽🄶⬇️⬇️... »**\n\n**📝Name »** `{name}\n❄Quality » {raw_text2}`\n\n**🔗URL »** `{url}`"
-                    prog = await message.reply_text(Show)
-                    
-                    file_path = await download_m3u8(url, name)
-                    if file_path:
-                        await helper.send_vid(bot, message, cc, file_path, thumb, name, prog)
-                        count += 1
-                        os.remove(file_path)
+                url = links[i]
+                name = f"{str(i+1).zfill(3)}) {raw_text0}"
+                
+                Show = f"**⥥ 🄳🄾🅆🄽🄻🄾🄰🄳🄸🄽🄶⬇️⬇️... »**\n\n**📝Name »** `{name}\n❄Quality » {raw_text2}`\n\n**🔗URL »** `{url}`"
+                prog = await message.reply_text(Show)
+                
+                file_path = await download_file(url, name)
+                
+                if file_path:
+                    if file_path.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                        cc = f'**[🖼️] Img_ID:** {str(i+1).zfill(3)}. **{name}{MR}**\n**𝔹ᴀᴛᴄʜ** » **{raw_text0}**'
+                        await bot.send_photo(
+                            chat_id=message.chat.id,
+                            photo=file_path,
+                            caption=cc
+                        )
+                    elif file_path.endswith('.pdf'):
+                        cc = f'**[📁] Pdf_ID:** {str(i+1).zfill(3)}. **{name}{MR}**\n**𝔹ᴀᴛᴄʜ** » **{raw_text0}**'
+                        await bot.send_document(
+                            chat_id=message.chat.id,
+                            document=file_path,
+                            caption=cc
+                        )
                     else:
-                        await prog.edit(f"❌ Failed to download m3u8: {url}")
+                        cc = f'**[📽️] Vid_ID:** {str(i+1).zfill(3)}. **{name}{MR}**\n**𝔹ᴀᴛᴄʜ** » **{raw_text0}**'
+                        await bot.send_video(
+                            chat_id=message.chat.id,
+                            video=file_path,
+                            caption=cc,
+                            supports_streaming=True,
+                            thumb=thumb if thumb != "no" else None
+                        )
                     
-                    await prog.delete()
-                    time.sleep(1)
+                    os.remove(file_path)
                 else:
-                    Show = f"**⥥ 🄳🄾🅆🄽🄻🄾🄰🄳🄸🄽🄶⬇️⬇️... »**\n\n**📝Name »** `{name}\n❄Quality » {raw_text2}`\n\n**🔗URL »** `{url}`"
-                    prog = await message.reply_text(Show)
-                    
-                    if "youtu" in url:
-                        if raw_text2 in ["144", "240", "360", "480", "720", "1080"]:
-                            ytf = f"'bestvideo[height<={raw_text2}][ext=mp4]+bestaudio[ext=m4a]/best[height<={raw_text2}]/best'"
-                        else:
-                            ytf = "best"
-                    else:
-                        if res != "UN":
-                            ytf = f"'bestvideo[height<={raw_text2}]+bestaudio/best[height<={raw_text2}]/best'"
-                        else:
-                            ytf = "best"
-
-                    if "jw-prod" in url:
-                        cmd = f'yt-dlp -o "{name}.mp4" "{url}"'
-                    else:
-                        cmd = f'yt-dlp -f {ytf} "{url}" -o "{name}.mp4"'
-
-                    download_cmd = f"{cmd} -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args 'aria2c: -x 16 -j 32'"
-                    os.system(download_cmd)
-                    
-                    if os.path.exists(f"{name}.mp4"):
-                        await helper.send_vid(bot, message, cc, f"{name}.mp4", thumb, name, prog)
-                        count += 1
-                        os.remove(f"{name}.mp4")
-                    else:
-                        await prog.edit(f"❌ Failed to download: {url}")
-                    
-                    await prog.delete()
-                    time.sleep(1)
-
+                    await message.reply_text(f"Failed to download: {url}")
+                
+                await prog.delete()
+                time.sleep(1)
+                
             except Exception as e:
-                await message.reply_text(
-                    f"**❌ Downloading Failed**\n{str(e)}\n**Name** » {name}\n**Link** » `{url}`"
-                )
+                await message.reply_text(f"**downloading Failed**\n{str(e)}\n**Name** » {name}\n**Link** » `{url}`")
                 continue
-
+                
+        if thumb != "no" and os.path.exists(thumb):
+            os.remove(thumb)
+            
         await message.reply_text("**𝔻ᴏɴᴇ 𝔹ᴏ𝕤𝕤😎**")
-        
+                
     except Exception as e:
-        await message.reply_text(f"❌ An error occurred: {str(e)}")
+        await message.reply_text(f"An error occurred: {str(e)}")
 
 @bot.on_message(filters.command("stop"))
 async def stop_process(client, message):
     try:
         os.system("pkill -9 yt-dlp")
         os.system("pkill -9 aria2c")
-        await message.reply_text("**✅ All processes stopped!**")
+        await message.reply_text("All processes stopped!")
     except Exception as e:
-        await message.reply_text(f"❌ Error stopping processes: {str(e)}")
+        await message.reply_text(f"Error stopping processes: {str(e)}")
 
 bot.run()
