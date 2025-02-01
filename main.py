@@ -38,15 +38,25 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# Constants
-SUPPORTED_FORMATS = ['.txt']
-MAX_RETRIES = 3
-RETRY_DELAY = 5
-CHUNK_SIZE = 2048
-
-class DownloadError(Exception):
-    """Custom exception for download errors"""
-    pass
+async def extract_links_from_txt(file_path):
+    """Extract and validate links from a .txt file"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Extract links using regex pattern
+            url_pattern = r'https?://[^\s<>"\']+'
+            links = re.findall(url_pattern, content)
+            return [link.strip() for link in links if link.strip()]
+    except UnicodeDecodeError:
+        # Try with different encoding if UTF-8 fails
+        with open(file_path, 'r', encoding='latin-1') as f:
+            content = f.read()
+            url_pattern = r'https?://[^\s<>"\']+'
+            links = re.findall(url_pattern, content)
+            return [link.strip() for link in links if link.strip()]
+    except Exception as e:
+        logger.error(f"Error reading file: {str(e)}")
+        return []
 
 async def process_link(link):
     """Process and transform links if needed"""
@@ -154,8 +164,8 @@ async def start_message(client, message):
 async def help_message(client, message):
     await message.reply_text(
         "How to use me:\n\n"
-        "1. Send me a text file containing video links\n"
-        "2. Use /upload command to start downloading\n"
+        "1. Send me a .txt file containing video links\n"
+        "2. Reply to the .txt file with /upload command\n"
         "3. Use /stop to cancel ongoing process\n\n"
         "For support, contact @JOHN_FR34K"
     )
@@ -164,31 +174,32 @@ async def help_message(client, message):
 async def upload_file(client, message):
     try:
         if not message.reply_to_message:
-            await message.reply_text("Please reply to a text file containing links!")
+            await message.reply_text("Please reply to a .txt file containing links!")
             return
         
         if not message.reply_to_message.document:
-            await message.reply_text("Please reply to a text file!")
+            await message.reply_text("Please reply to a .txt file!")
             return
             
-        if not message.reply_to_message.document.file_name.endswith('.txt'):
-            await message.reply_text("Please reply to a text file!")
+        file_name = message.reply_to_message.document.file_name
+        if not file_name.endswith('.txt'):
+            await message.reply_text("Only .txt files are supported! Please send a .txt file.")
             return
             
-        msg = await message.reply_text("Processing...")
+        msg = await message.reply_text("📥 Downloading .txt file...")
         
-        file = await message.reply_to_message.download()
-        links = []
+        # Download the .txt file
+        file_path = await message.reply_to_message.download()
         
-        with open(file, 'r') as f:
-            links = [line.strip() for line in f if line.strip()]
+        # Extract links from the .txt file
+        links = await extract_links_from_txt(file_path)
             
         if not links:
-            await msg.edit("No links found in the text file!")
-            os.remove(file)
+            await msg.edit("❌ No valid links found in the .txt file!")
+            os.remove(file_path)
             return
             
-        await msg.edit(f"Found {len(links)} links. Starting download...")
+        await msg.edit(f"✅ Found {len(links)} links in the .txt file\n⏳ Starting downloads...")
         count = 1
         
         for i, link in enumerate(links, 1):
@@ -211,37 +222,37 @@ async def upload_file(client, message):
 
                 download_cmd = f"{cmd} -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args 'aria2c: -x 16 -j 32'"
                 
-                Show = f"**⥥ Downloading... »**\n\n**📝Name »** `{name}\n\n**🔗URL »** `{processed_link}`"
+                Show = f"**⬇️ Downloading Video {i}/{len(links)} **\n\n**📝 Name »** `{name}`\n\n**🔗 URL »** `{processed_link}`"
                 prog = await message.reply_text(Show)
                 
                 os.system(download_cmd)
                 
                 if os.path.exists(f"{name}.mp4"):
-                    cc = f'**[📽️] Vid_ID:** {str(count).zfill(3)}. {name1}.mp4'
+                    cc = f'**[📽️] Video {str(count).zfill(3)}:** {name1}.mp4'
                     await send_vid(bot, message, cc, f"{name}.mp4", "no", name, prog)
                     count += 1
                 else:
-                    await prog.edit(f"Failed to download: {processed_link}")
+                    await prog.edit(f"❌ Failed to download: {processed_link}")
                 
                 await prog.delete()
                 
             except Exception as e:
-                await message.reply_text(f"Error downloading link {i}: {str(e)}")
+                await message.reply_text(f"❌ Error downloading link {i}: {str(e)}")
                 continue
                 
-        await msg.edit("All downloads completed!")
-        os.remove(file)
+        await msg.edit("✅ All downloads completed!")
+        os.remove(file_path)
         
     except Exception as e:
-        await message.reply_text(f"An error occurred: {str(e)}")
+        await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 @bot.on_message(filters.command("stop"))
 async def stop_process(client, message):
     try:
         os.system("pkill -9 yt-dlp")
         os.system("pkill -9 aria2c")
-        await message.reply_text("All processes stopped!")
+        await message.reply_text("✅ All processes stopped!")
     except Exception as e:
-        await message.reply_text(f"Error stopping processes: {str(e)}")
+        await message.reply_text(f"❌ Error stopping processes: {str(e)}")
 
 bot.run()
