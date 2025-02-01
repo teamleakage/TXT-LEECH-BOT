@@ -1,7 +1,6 @@
 import time
 import math
 import os
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 async def progress_bar(current, total, text, message, start):
     now = time.time()
