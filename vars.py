@@ -1,4 +1,3 @@
-# Created by @JOHN_FR34K
 from os import environ
 
 API_ID = int(environ.get("API_ID", ""))

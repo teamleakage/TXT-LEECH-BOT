@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import time
+import math
 import asyncio
 import logging
 import requests
@@ -17,6 +18,7 @@ import m3u8
 from Cryptodome.Cipher import AES
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from utils import progress_bar, humanbytes, TimeFormatter
 
 # Configure logging
 logging.basicConfig(
@@ -25,10 +27,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Get environment variables with fallback
-API_ID = os.environ.get("API_ID")
-API_HASH = os.environ.get("API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# Import variables from vars.py
+from vars import API_ID, API_HASH, BOT_TOKEN
 
 # Initialize bot
 bot = Client(
@@ -39,7 +39,7 @@ bot = Client(
 )
 
 # Constants
-SUPPORTED_FORMATS = ['.txt', '.doc', '.docx']
+SUPPORTED_FORMATS = ['.txt']
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 CHUNK_SIZE = 2048
@@ -47,6 +47,39 @@ CHUNK_SIZE = 2048
 class DownloadError(Exception):
     """Custom exception for download errors"""
     pass
+
+async def process_link(link):
+    """Process and transform links if needed"""
+    try:
+        if 'visionias' in link:
+            async with ClientSession() as session:
+                async with session.get(link, headers={
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Pragma': 'no-cache',
+                    'Referer': 'http://www.visionias.in/',
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36'
+                }) as resp:
+                    text = await resp.text()
+                    link = re.search(r"(https://.*?playlist.m3u8.*?)\"", text).group(1)
+        
+        elif 'videos.classplusapp' in link:
+            response = requests.get(
+                f'https://api.classplusapp.com/cams/uploader/video/jw-signed-url?url={link}', 
+                headers={'x-access-token': 'your-token-here'}
+            ).json()
+            link = response['url']
+        
+        elif '/master.mpd' in link:
+            id = link.split("/")[-2]
+            link = f"https://d26g5bnklkwsh4.cloudfront.net/{id}/master.m3u8"
+            
+        return link
+    except Exception as e:
+        logger.error(f"Error processing link: {str(e)}")
+        return link
 
 async def send_vid(bot, message, cc, filename, thumb, name, prog):
     """Send video file to user"""
@@ -60,7 +93,6 @@ async def send_vid(bot, message, cc, filename, thumb, name, prog):
         width = 0
         height = 0
         
-        # Try to get video metadata
         try:
             metadata = await bot.get_file_metadata(filename)
             if metadata:
@@ -110,60 +142,106 @@ async def send_vid(bot, message, cc, filename, thumb, name, prog):
             os.remove(thumb)
         raise
 
-async def progress_bar(current, total, name, message, start):
-    """Show progress bar for uploads"""
-    now = time.time()
-    diff = now - start
-    if round(diff % 10.00) == 0 or current == total:
-        percentage = current * 100 / total
-        speed = current / diff
-        elapsed_time = round(diff) * 1000
-        time_to_completion = round((total - current) / speed) * 1000
-        estimated_total_time = elapsed_time + time_to_completion
+@bot.on_message(filters.command("start"))
+async def start_message(client, message):
+    await message.reply_text(
+        "Hello! I am a TXT Leech Bot.\n\n"
+        "I can download videos from text files containing links.\n"
+        "Send /help to know more about how to use me."
+    )
 
-        elapsed_time = TimeFormatter(milliseconds=elapsed_time)
-        estimated_total_time = TimeFormatter(milliseconds=estimated_total_time)
+@bot.on_message(filters.command("help"))
+async def help_message(client, message):
+    await message.reply_text(
+        "How to use me:\n\n"
+        "1. Send me a text file containing video links\n"
+        "2. Use /upload command to start downloading\n"
+        "3. Use /stop to cancel ongoing process\n\n"
+        "For support, contact @JOHN_FR34K"
+    )
 
-        progress = "[{0}{1}] \nPercentage: {2}%\n".format(
-            ''.join(["●" for i in range(math.floor(percentage / 5))]),
-            ''.join(["○" for i in range(20 - math.floor(percentage / 5))]),
-            round(percentage, 2))
+@bot.on_message(filters.command("upload"))
+async def upload_file(client, message):
+    try:
+        if not message.reply_to_message:
+            await message.reply_text("Please reply to a text file containing links!")
+            return
+        
+        if not message.reply_to_message.document:
+            await message.reply_text("Please reply to a text file!")
+            return
+            
+        if not message.reply_to_message.document.file_name.endswith('.txt'):
+            await message.reply_text("Please reply to a text file!")
+            return
+            
+        msg = await message.reply_text("Processing...")
+        
+        file = await message.reply_to_message.download()
+        links = []
+        
+        with open(file, 'r') as f:
+            links = [line.strip() for line in f if line.strip()]
+            
+        if not links:
+            await msg.edit("No links found in the text file!")
+            os.remove(file)
+            return
+            
+        await msg.edit(f"Found {len(links)} links. Starting download...")
+        count = 1
+        
+        for i, link in enumerate(links, 1):
+            try:
+                # Process the link
+                processed_link = await process_link(link)
+                
+                name1 = f"video_{str(i).zfill(3)}"
+                name = f'{str(count).zfill(3)}) {name1}'
+                
+                if "youtu" in processed_link:
+                    ytf = "b[height<=720][ext=mp4]/bv[height<=720][ext=mp4]+ba[ext=m4a]/b[ext=mp4]"
+                else:
+                    ytf = "b[height<=720]/bv[height<=720]+ba/b/bv+ba"
 
-        tmp = progress + "{0} of {1}\nSpeed: {2}/s\nETA: {3}\n".format(
-            humanbytes(current),
-            humanbytes(total),
-            humanbytes(speed),
-            estimated_total_time if estimated_total_time != '' else "0 s"
-        )
-        try:
-            await message.edit(
-                text=f"{name}\n {tmp}"
-            )
-        except:
-            pass
+                if "jw-prod" in processed_link:
+                    cmd = f'yt-dlp -o "{name}.mp4" "{processed_link}"'
+                else:
+                    cmd = f'yt-dlp -f "{ytf}" "{processed_link}" -o "{name}.mp4"'
 
-def humanbytes(size):
-    """Convert bytes to human readable format"""
-    if not size:
-        return ""
-    power = 2**10
-    n = 0
-    Dic_powerN = {0: ' ', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}
-    while size > power:
-        size /= power
-        n += 1
-    return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
+                download_cmd = f"{cmd} -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args 'aria2c: -x 16 -j 32'"
+                
+                Show = f"**⥥ Downloading... »**\n\n**📝Name »** `{name}\n\n**🔗URL »** `{processed_link}`"
+                prog = await message.reply_text(Show)
+                
+                os.system(download_cmd)
+                
+                if os.path.exists(f"{name}.mp4"):
+                    cc = f'**[📽️] Vid_ID:** {str(count).zfill(3)}. {name1}.mp4'
+                    await send_vid(bot, message, cc, f"{name}.mp4", "no", name, prog)
+                    count += 1
+                else:
+                    await prog.edit(f"Failed to download: {processed_link}")
+                
+                await prog.delete()
+                
+            except Exception as e:
+                await message.reply_text(f"Error downloading link {i}: {str(e)}")
+                continue
+                
+        await msg.edit("All downloads completed!")
+        os.remove(file)
+        
+    except Exception as e:
+        await message.reply_text(f"An error occurred: {str(e)}")
 
-def TimeFormatter(milliseconds: int) -> str:
-    """Format milliseconds to readable time string"""
-    seconds, milliseconds = divmod(int(milliseconds), 1000)
-    minutes, seconds = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    days, hours = divmod(hours, 24)
-    tmp = ((str(days) + "d, ") if days else "") + \
-        ((str(hours) + "h, ") if hours else "") + \
-        ((str(minutes) + "m, ") if minutes else "") + \
-        ((str(seconds) + "s, ") if seconds else "")
-    return tmp[:-2]
+@bot.on_message(filters.command("stop"))
+async def stop_process(client, message):
+    try:
+        os.system("pkill -9 yt-dlp")
+        os.system("pkill -9 aria2c")
+        await message.reply_text("All processes stopped!")
+    except Exception as e:
+        await message.reply_text(f"Error stopping processes: {str(e)}")
 
-[Previous code continues unchanged...]
+bot.run()

@@ -1,4 +1,3 @@
-# Created by @JOHN_FR34K
 import time
 import math
 import os
