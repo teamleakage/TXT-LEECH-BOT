@@ -25,20 +25,33 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
+async def process_txt_file(file_path):
+    try:
+        with open(file_path, "r", encoding='utf-8') as f:
+            content = f.read()
+        links = []
+        for line in content.split('\n'):
+            line = line.strip()
+            if line:
+                url_match = re.search(r'https?://[^\s<>"]+|www\.[^\s<>"]+', line)
+                if url_match:
+                    links.append(url_match.group())
+        return links
+    except Exception as e:
+        print(f"Error processing txt file: {str(e)}")
+        return None
+
 async def download_file(url, name):
     try:
         if url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-            # For image files, download directly using requests
             response = requests.get(url)
             if response.status_code == 200:
                 with open(f"{name}.jpg", "wb") as f:
                     f.write(response.content)
                 return f"{name}.jpg"
         else:
-            # For other files, use yt-dlp
             cmd = f'yt-dlp -o "{name}.%(ext)s" "{url}" -R 25 --fragment-retries 25'
             os.system(cmd)
-            # Find the downloaded file
             for file in os.listdir():
                 if file.startswith(name):
                     return file
@@ -69,36 +82,37 @@ async def help_message(client, message):
 async def upload_file(client, message):
     try:
         if not message.reply_to_message:
-            await message.reply_text("Please reply to a text file containing links!")
-            return
+            msg = await message.reply_text(
+                "**Send me a .txt file containing links**\n\n"
+                "ℹ️ I'll wait for the file..."
+            )
+            file_message = await bot.listen(message.chat.id, filters=filters.document)
+            if not file_message.document:
+                await msg.edit("❌ **Please send a .txt file!**")
+                return
+            if not file_message.document.file_name.endswith('.txt'):
+                await msg.edit("❌ **Only .txt files are supported!**")
+                return
+            message.reply_to_message = file_message
+            await msg.delete()
         
         if not message.reply_to_message.document:
-            await message.reply_text("Please reply to a text file!")
+            await message.reply_text("❌ **Please reply to a .txt file!**")
             return
             
         if not message.reply_to_message.document.file_name.endswith('.txt'):
-            await message.reply_text("Please reply to a text file!")
+            await message.reply_text("❌ **Only .txt files are supported!**")
             return
             
-        editable = await message.reply_text("Processing...")
+        editable = await message.reply_text("📥 **Processing .txt file...**")
         
         # Download and process the text file
-        file = await message.reply_to_message.download()
-        path = f"./downloads/{message.chat.id}"
-        os.makedirs(path, exist_ok=True)
-
-        try:
-            with open(file, "r") as f:
-                content = f.read()
-            content = content.split("\n")
-            links = []
-            for i in content:
-                if i.strip():  # Skip empty lines
-                    links.append(i.strip())
-            os.remove(file)
-        except:
-            await message.reply_text("**Invalid file input.**")
-            os.remove(file)
+        file_path = await message.reply_to_message.download()
+        links = await process_txt_file(file_path)
+        
+        if not links:
+            await editable.edit("❌ **No valid links found in the file!**")
+            os.remove(file_path)
             return
 
         await editable.edit(f"**𝕋ᴏᴛᴀʟ ʟɪɴᴋ𝕤 ғᴏᴜɴᴅ ᴀʀᴇ🔗🔗** **{len(links)}**\n\n**𝕊ᴇɴᴅ 𝔽ʀᴏᴍ ᴡʜᴇʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ɪɴɪᴛɪᴀʟ ɪ𝕤** **1**")
