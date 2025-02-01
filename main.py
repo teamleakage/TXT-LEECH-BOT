@@ -46,11 +46,24 @@ async def help_message(client, message):
 async def upload_file(client, message):
     try:
         if not message.reply_to_message:
-            await message.reply_text(
-                "❌ **Please reply to a .txt file containing links!**\n\n"
-                "Send me a .txt file which contains links and reply with /upload"
+            msg = await message.reply_text(
+                "**Send me a .txt file containing links**\n\n"
+                "ℹ️ I'll wait for the file..."
             )
-            return
+            
+            # Wait for a file to be sent
+            file_message: Message = await bot.listen(message.chat.id, filters=filters.document)
+            
+            if not file_message.document:
+                await msg.edit("❌ **Please send a file!**")
+                return
+                
+            if not file_message.document.file_name.endswith('.txt'):
+                await msg.edit("❌ **Only .txt files are supported!**")
+                return
+                
+            message.reply_to_message = file_message
+            await msg.delete()
         
         if not message.reply_to_message.document:
             await message.reply_text("❌ **Please send a .txt file!**")
