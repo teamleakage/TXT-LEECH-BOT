@@ -41,6 +41,43 @@ async def process_txt_file(file_path):
         print(f"Error processing txt file: {str(e)}")
         return None
 
+async def download_classplus_m3u8(url, name, quality):
+    try:
+        # Add required headers for Classplus
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': 'https://web.classplusapp.com/',
+            'Origin': 'https://web.classplusapp.com'
+        }
+        
+        # Download m3u8 file with headers
+        cmd = [
+            'yt-dlp',
+            '--no-check-certificates',
+            '--no-warnings',
+            '--allow-unplayable-formats',
+            '--downloader', 'ffmpeg',
+            '--downloader-args', 'ffmpeg_i:-headers "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" -headers "Referer: https://web.classplusapp.com/" -headers "Origin: https://web.classplusapp.com"',
+            '-f', f'best[height<={quality}]/best',
+            '-o', f'{name}.mp4',
+            url
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        await process.communicate()
+        
+        if os.path.exists(f"{name}.mp4"):
+            return f"{name}.mp4"
+        return None
+    except Exception as e:
+        print(f"Error downloading Classplus m3u8: {str(e)}")
+        return None
+
 async def download_file(url, name, quality):
     try:
         if url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
@@ -49,20 +86,32 @@ async def download_file(url, name, quality):
                 with open(f"{name}.jpg", "wb") as f:
                     f.write(response.content)
                 return f"{name}.jpg"
-        elif '.m3u8' in url:
-            # Special handling for Classplus m3u8 streams
-            cmd = f'yt-dlp -f "best[height<={quality}]/best" "{url}" -o "{name}.mp4" --no-check-certificates --allow-unplayable-formats --downloader ffmpeg'
-            os.system(cmd)
-            if os.path.exists(f"{name}.mp4"):
-                return f"{name}.mp4"
+        elif '.m3u8' in url and 'classplusapp.com' in url:
+            return await download_classplus_m3u8(url, name, quality)
         else:
             if quality in ["144", "240", "360", "480", "720", "1080"]:
-                ytf = f"'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]/best'"
+                ytf = f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]/best'
             else:
                 ytf = "best"
                 
-            cmd = f'yt-dlp -f {ytf} "{url}" -o "{name}.%(ext)s" -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args "aria2c: -x 16 -j 32"'
-            os.system(cmd)
+            cmd = [
+                'yt-dlp',
+                '-f', ytf,
+                '-o', f'{name}.%(ext)s',
+                '-R', '25',
+                '--fragment-retries', '25',
+                '--external-downloader', 'aria2c',
+                '--downloader-args', 'aria2c:-x 16 -j 32',
+                url
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            await process.communicate()
             
             for file in os.listdir():
                 if file.startswith(name):
