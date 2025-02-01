@@ -41,7 +41,7 @@ async def process_txt_file(file_path):
         print(f"Error processing txt file: {str(e)}")
         return None
 
-async def download_file(url, name):
+async def download_file(url, name, quality):
     try:
         if url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
             response = requests.get(url)
@@ -49,9 +49,21 @@ async def download_file(url, name):
                 with open(f"{name}.jpg", "wb") as f:
                     f.write(response.content)
                 return f"{name}.jpg"
-        else:
-            cmd = f'yt-dlp -o "{name}.%(ext)s" "{url}" -R 25 --fragment-retries 25'
+        elif '.m3u8' in url:
+            # Special handling for Classplus m3u8 streams
+            cmd = f'yt-dlp -f "best[height<={quality}]/best" "{url}" -o "{name}.mp4" --no-check-certificates --allow-unplayable-formats --downloader ffmpeg'
             os.system(cmd)
+            if os.path.exists(f"{name}.mp4"):
+                return f"{name}.mp4"
+        else:
+            if quality in ["144", "240", "360", "480", "720", "1080"]:
+                ytf = f"'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]/best'"
+            else:
+                ytf = "best"
+                
+            cmd = f'yt-dlp -f {ytf} "{url}" -o "{name}.%(ext)s" -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args "aria2c: -x 16 -j 32"'
+            os.system(cmd)
+            
             for file in os.listdir():
                 if file.startswith(name):
                     return file
@@ -161,7 +173,7 @@ async def upload_file(client, message):
                 Show = f"**⥥ 🄳🄾🅆🄽🄻🄾🄰🄳🄸🄽🄶⬇️⬇️... »**\n\n**📝Name »** `{name}\n❄Quality » {raw_text2}`\n\n**🔗URL »** `{url}`"
                 prog = await message.reply_text(Show)
                 
-                file_path = await download_file(url, name)
+                file_path = await download_file(url, name, raw_text2)
                 
                 if file_path:
                     if file_path.endswith(('.jpg', '.jpeg', '.png', '.webp')):
