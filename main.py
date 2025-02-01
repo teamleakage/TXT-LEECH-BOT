@@ -24,6 +24,27 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
+async def download_m3u8(url, name):
+    try:
+        # Download m3u8 file
+        response = requests.get(url)
+        if response.status_code != 200:
+            return None
+            
+        # Parse m3u8
+        m3u8_obj = m3u8.loads(response.text)
+        
+        # Download using yt-dlp
+        cmd = f'yt-dlp -o "{name}.mp4" "{url}" --no-check-certificate'
+        os.system(cmd)
+        
+        if os.path.exists(f"{name}.mp4"):
+            return f"{name}.mp4"
+        return None
+    except Exception as e:
+        print(f"Error downloading m3u8: {str(e)}")
+        return None
+
 @bot.on_message(filters.command("start"))
 async def start_message(client, message):
     await message.reply_text(
@@ -77,11 +98,18 @@ async def upload_file(client, message):
         editable = await message.reply_text("📥 **Processing .txt file...**")
         
         file_path = await message.reply_to_message.download()
+        links = []
+        
+        # Parse links from file
         with open(file_path, 'r') as f:
-            links = f.read().splitlines()
+            for line in f:
+                # Extract URL using regex
+                url_match = re.search(r'https?://[^\s<>"]+|www\.[^\s<>"]+', line)
+                if url_match:
+                    links.append(url_match.group())
             
         if not links:
-            await editable.edit("❌ **No links found in the file!**")
+            await editable.edit("❌ **No valid links found in the file!**")
             os.remove(file_path)
             return
             
@@ -177,6 +205,20 @@ async def upload_file(client, message):
                         await message.reply_text(str(e))
                         time.sleep(e.x)
                         continue
+                elif ".m3u8" in url:
+                    Show = f"**⥥ 🄳🄾🅆🄽🄻🄾🄰🄳🄸🄽🄶⬇️⬇️... »**\n\n**📝Name »** `{name}\n❄Quality » {raw_text2}`\n\n**🔗URL »** `{url}`"
+                    prog = await message.reply_text(Show)
+                    
+                    file_path = await download_m3u8(url, name)
+                    if file_path:
+                        await helper.send_vid(bot, message, cc, file_path, thumb, name, prog)
+                        count += 1
+                        os.remove(file_path)
+                    else:
+                        await prog.edit(f"❌ Failed to download m3u8: {url}")
+                    
+                    await prog.delete()
+                    time.sleep(1)
                 else:
                     Show = f"**⥥ 🄳🄾🅆🄽🄻🄾🄰🄳🄸🄽🄶⬇️⬇️... »**\n\n**📝Name »** `{name}\n❄Quality » {raw_text2}`\n\n**🔗URL »** `{url}`"
                     prog = await message.reply_text(Show)
@@ -203,6 +245,7 @@ async def upload_file(client, message):
                     if os.path.exists(f"{name}.mp4"):
                         await helper.send_vid(bot, message, cc, f"{name}.mp4", thumb, name, prog)
                         count += 1
+                        os.remove(f"{name}.mp4")
                     else:
                         await prog.edit(f"❌ Failed to download: {url}")
                     
